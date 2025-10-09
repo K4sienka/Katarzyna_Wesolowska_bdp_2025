@@ -1,0 +1,1 @@
+Zmiany nr 1.
