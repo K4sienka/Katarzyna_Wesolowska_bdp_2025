@@ -1,0 +1,52 @@
+name: Send Submission After Merge
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  send_submission:
+    runs-on: ubuntu-latest
+    env:
+      SUBMISSION_SERVICE_URL: ${{ secrets.SUBMISSION_SERVICE_URL }}
+      PROJECT_ID: ${{ secrets.PROJECT_ID }}
+      ASSERTION_TTL_SECONDS: "300"
+      STUDENT_KEY: ${{ secrets.STUDENT_KEY }}
+      ZITADEL_DOMAIN: ${{ secrets.ZITADEL_DOMAIN }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (jq, openssl etc.)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq openssl
+
+      - name: Get ACCESS_TOKEN
+        id: get_token
+        run: |
+          RESPONSE="$(bash ./ci-token.sh)"
+          ACCESS_TOKEN="$(printf '%s' "$RESPONSE" | jq -r '.access_token')"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Send request with token
+        run: |
+          TOKEN="${{ steps.get_token.outputs.access_token }}"
+          echo "::add-mask::$ACCESS_TOKEN"
+
+          # można też sprawdzić, czy się udało
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "ERROR: no token"
+            exit 1
+          fi
+
+          COMMIT_SHA="${GITHUB_SHA}"
+
+          curl -X POST "$SUBMISSION_SERVICE_URL/submission" \
+            -H "accept: application/json" \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"commit_sha\":\"${COMMIT_SHA}\"}"
